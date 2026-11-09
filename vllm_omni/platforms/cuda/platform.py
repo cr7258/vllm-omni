@@ -87,6 +87,8 @@ class CudaOmniPlatform(OmniPlatform, CudaPlatformBase):
         #   sm_121 = consumer Blackwell refresh
         _known_blackwell_sms = {(10, 0), (10, 3), (12, 0), (12, 1)}
         compute_capability = cls.get_device_capability()
+        is_rubin = compute_capability == DeviceCapability(10, 7)
+        cudnn_min_version = 92500 if is_rubin else 90500
         compute_supported = False
         is_blackwell = False
         sm_str = ""
@@ -280,6 +282,14 @@ class CudaOmniPlatform(OmniPlatform, CudaPlatformBase):
                         "Select TORCH_SDPA or another backend."
                     )
             if backend_upper == "CUDNN_ATTN":
+                if is_rubin:
+                    cudnn_version = torch.backends.cudnn.version() or 0
+                    if cudnn_version < cudnn_min_version:
+                        raise ValueError(
+                            "CUDNN_ATTN on Rubin (SM107) requires cuDNN 9.25.0 or newer; "
+                            f"found runtime version {cudnn_version}. Install a compatible cuDNN runtime "
+                            "or select another diffusion attention backend."
+                        )
                 from vllm_omni.diffusion.attention.backends.cudnn_attn import CuDNNAttentionBackend
 
                 # head_size <= 0 is the capability-probe sentinel (auto-pad does
@@ -312,6 +322,7 @@ class CudaOmniPlatform(OmniPlatform, CudaPlatformBase):
             allow_trtllm_default
             and compute_capability is not None
             and compute_capability.major == 10
+            and not is_rubin
             and head_size == 128
             and trtllm_gen_available
         )
@@ -324,10 +335,10 @@ class CudaOmniPlatform(OmniPlatform, CudaPlatformBase):
             return DiffusionAttentionBackendEnum.TRTLLM_ATTN.get_path()
 
         # Torch 2.14 can initialize CUDA while querying the cuDNN version.
-        # Only the automatic Blackwell fallback needs this probe; explicit
-        # selections and other architectures must not initialize cuDNN here.
+        # Only automatic selection and Rubin's explicit cuDNN validation above
+        # need this probe; unrelated explicit backends must not initialize cuDNN.
         cudnn_version = (torch.backends.cudnn.version() or 0) if is_blackwell else 0
-        if is_blackwell and cudnn_version >= 90500:
+        if is_blackwell and cudnn_version >= cudnn_min_version:
             from vllm_omni.diffusion.attention.backends.cudnn_attn import CuDNNAttentionBackend
 
             # Unknown head_size is a capability probe (SP auto-pad), not a
@@ -358,12 +369,13 @@ class CudaOmniPlatform(OmniPlatform, CudaPlatformBase):
                 )
                 return DiffusionAttentionBackendEnum.FLASHINFER_ATTN.get_path()
 
-        if is_blackwell and cudnn_version < 90500:
+        if is_blackwell and cudnn_version < cudnn_min_version:
             logger.warning(
-                "Detected Blackwell %s but cuDNN %d < 9.5 — no tuned Blackwell FMHA. "
+                "Detected GPU %s but cuDNN %d < %d — no tuned FMHA. "
                 "Automatic backend selection will use FlashInfer when available, otherwise SDPA.",
                 sm_str,
                 cudnn_version,
+                cudnn_min_version,
             )
 
         if flash_attn_supported:

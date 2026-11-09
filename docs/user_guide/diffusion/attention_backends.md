@@ -133,6 +133,20 @@ The CUDA auto-route preference is:
 (sm_120/sm_121), for other head dimensions, or for paths that require an
 unsupported mask.
 
+### Rubin (sm_107)
+
+Rubin prefers `CUDNN_ATTN` for supported head sizes when cuDNN 9.25.0 or newer
+is available. Older runtimes are excluded from automatic cuDNN selection;
+the existing FlashInfer, FlashAttention, and SDPA candidate order applies.
+Explicit `CUDNN_ATTN` with an older runtime raises an actionable error.
+Use a matching CUDA 13.4 or newer software stack, including compatible
+PyTorch, Triton, and ptxas builds.
+
+`TRTLLM_ATTN` is not selected automatically on Rubin: an importable FlashInfer
+API does not establish that its kernel package includes the requested SM107
+workload. Explicit overrides remain available and require a compatible kernel
+build. Other GPU architectures retain their existing selection policy.
+
 ### Hopper, Ada, and Ampere
 
 The CUDA auto-route uses `FLASH_ATTN` when available and otherwise falls back

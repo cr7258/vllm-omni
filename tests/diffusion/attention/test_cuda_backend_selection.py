@@ -59,6 +59,96 @@ def _install_dummy_flashinfer_prefill(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "flashinfer.prefill", prefill)
 
 
+def _rubin_sm107(monkeypatch: pytest.MonkeyPatch, *, cudnn_version: int = 92601) -> None:
+    _blackwell_sm120(monkeypatch, cudnn_version=cudnn_version)
+    monkeypatch.setattr(
+        CudaOmniPlatform,
+        "get_device_capability",
+        classmethod(lambda cls, device_id=0: DeviceCapability(10, 7)),
+    )
+
+
+def _install_dummy_trtllm(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_dummy_flashinfer_prefill(monkeypatch)
+    monkeypatch.setattr(sys.modules["flashinfer.prefill"], "trtllm_ragged_attention_deepseek", object(), raising=False)
+
+
+@pytest.mark.parametrize("head_size", [72, 128])
+def test_rubin_defaults_to_cudnn_with_trtllm_available(monkeypatch: pytest.MonkeyPatch, head_size: int):
+    _rubin_sm107(monkeypatch)
+    _install_dummy_trtllm(monkeypatch)
+
+    path = CudaOmniPlatform.get_diffusion_attn_backend_cls(None, head_size=head_size)
+
+    assert path == DiffusionAttentionBackendEnum.CUDNN_ATTN.get_path()
+
+
+@pytest.mark.parametrize("backend", ["CUDNN_ATTN", "cudnn_attn"])
+@pytest.mark.parametrize("cudnn_version", [0, 92000, 92400])
+def test_rubin_rejects_unsupported_cudnn_runtime(
+    monkeypatch: pytest.MonkeyPatch, backend: str | None, cudnn_version: int
+):
+    _rubin_sm107(monkeypatch, cudnn_version=cudnn_version)
+    _install_dummy_trtllm(monkeypatch)
+
+    with pytest.raises(ValueError, match="SM107.*cuDNN 9.25.0.*runtime version"):
+        CudaOmniPlatform.get_diffusion_attn_backend_cls(backend, head_size=128)
+
+
+def test_rubin_auto_selects_flashinfer_when_cudnn_too_old(monkeypatch: pytest.MonkeyPatch):
+    _rubin_sm107(monkeypatch, cudnn_version=92400)
+    _install_dummy_trtllm(monkeypatch)
+
+    path = CudaOmniPlatform.get_diffusion_attn_backend_cls(None, head_size=128)
+
+    assert path == DiffusionAttentionBackendEnum.FLASHINFER_ATTN.get_path()
+
+
+def test_rubin_auto_selects_fa4_for_head_size_outside_cudnn(monkeypatch: pytest.MonkeyPatch):
+    _rubin_sm107(monkeypatch, cudnn_version=92400)
+    monkeypatch.setitem(sys.modules, "flashinfer", None)
+    monkeypatch.setattr(CudaOmniPlatform, "has_flash_attn_4", classmethod(lambda cls: True))
+
+    path = CudaOmniPlatform.get_diffusion_attn_backend_cls(None, head_size=320)
+
+    assert path == DiffusionAttentionBackendEnum.FLASH_ATTN.get_path()
+
+
+def test_rubin_accepts_minimum_cudnn_runtime(monkeypatch: pytest.MonkeyPatch):
+    _rubin_sm107(monkeypatch, cudnn_version=92500)
+
+    path = CudaOmniPlatform.get_diffusion_attn_backend_cls("CUDNN_ATTN", head_size=128)
+
+    assert path == DiffusionAttentionBackendEnum.CUDNN_ATTN.get_path()
+
+
+@pytest.mark.parametrize("backend", ["TORCH_SDPA", "TRTLLM_ATTN"])
+def test_rubin_explicit_other_backend_does_not_probe_cudnn(monkeypatch: pytest.MonkeyPatch, backend: str):
+    _rubin_sm107(monkeypatch)
+    _install_dummy_trtllm(monkeypatch)
+    monkeypatch.setattr(CudaOmniPlatform, "validate_diffusion_attn_backend", classmethod(lambda cls, name: None))
+
+    def unexpected_cudnn_probe():
+        pytest.fail("An explicit non-cuDNN backend must not initialize cuDNN")
+
+    monkeypatch.setattr(torch.backends.cudnn, "version", unexpected_cudnn_probe)
+
+    path = CudaOmniPlatform.get_diffusion_attn_backend_cls(backend, head_size=128)
+
+    assert path == DiffusionAttentionBackendEnum[backend].get_path()
+
+
+@pytest.mark.parametrize("capability", [DeviceCapability(10, 0), DeviceCapability(10, 3)])
+def test_datacenter_blackwell_keeps_trtllm_default(monkeypatch: pytest.MonkeyPatch, capability: DeviceCapability):
+    _blackwell_sm120(monkeypatch)
+    monkeypatch.setattr(CudaOmniPlatform, "get_device_capability", classmethod(lambda cls, device_id=0: capability))
+    _install_dummy_trtllm(monkeypatch)
+
+    path = CudaOmniPlatform.get_diffusion_attn_backend_cls(None, head_size=128)
+
+    assert path == DiffusionAttentionBackendEnum.TRTLLM_ATTN.get_path()
+
+
 def test_auto_selects_cudnn_for_supported_blackwell_head_size(monkeypatch: pytest.MonkeyPatch):
     _blackwell_sm120(monkeypatch)
 

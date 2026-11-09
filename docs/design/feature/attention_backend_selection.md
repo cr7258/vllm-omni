@@ -59,7 +59,11 @@ older per-Torch builds do not match. An explicit selection still fails when
 no compatible published build resolves.
 
 Explicit backend validation must avoid initializing unrelated runtimes. The
-cuDNN version probe belongs to automatic Blackwell fallback selection.
+cuDNN version probe belongs to automatic Blackwell fallback selection and to
+explicit cuDNN selection on Rubin (SM107). Rubin requires runtime cuDNN 9.25.0
+or newer for the cuDNN candidate. Its automatic selection does not choose
+TRTLLM based only on an importable FlashInfer API; explicit backend overrides
+remain available and must have kernels for the requested workload.
 
 The selector must not duplicate device capability or package-availability
 policy that belongs to the platform.
