@@ -1,5 +1,5 @@
 ARG BASE_IMAGE=vllm/vllm-openai:v0.33.0@sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e
-FROM ${BASE_IMAGE} AS runtime
+FROM ${BASE_IMAGE}
 ARG BASE_IMAGE
 # The base's optional EFA NCCL override conflicts with Torch 2.14 metadata.
 # Use the official wheel's declared NCCL dependency for the Omni runtime.
@@ -62,12 +62,10 @@ RUN python3 -c "from vllm._version import __commit_id__, __version__; commit = (
 
 RUN ln -sf /usr/bin/python3 /usr/bin/python
 
-ENTRYPOINT []
-
-FROM runtime AS cuda-compiler
-COPY requirements/cuda-compiler.txt /opt/cuda-compiler/requirements.txt
+# Install the standalone assembler outside Python's import path. Triton uses
+# this compiler for Blackwell and newer GPUs, including Rubin.
 RUN uv pip install --target /opt/cuda-compiler --no-deps --only-binary=:all: \
-    --require-hashes -r /opt/cuda-compiler/requirements.txt \
+    --require-hashes -r ${COMMON_WORKDIR}/vllm-omni/requirements/cuda-compiler.txt \
     && chmod 0755 /opt/cuda-compiler/nvidia/cu13/bin/ptxas
 ENV TRITON_PTXAS_BLACKWELL_PATH=/opt/cuda-compiler/nvidia/cu13/bin/ptxas
 
@@ -75,4 +73,4 @@ RUN python3 -c "from triton.backends.nvidia.compiler import get_ptxas; assert ge
     && /opt/cuda-compiler/nvidia/cu13/bin/ptxas --version \
     && uv pip check --python "$(python3 -c 'import sys; print(sys.executable)')"
 
-FROM runtime AS final
+ENTRYPOINT []

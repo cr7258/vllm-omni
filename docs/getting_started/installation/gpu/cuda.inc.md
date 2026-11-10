@@ -163,18 +163,17 @@ uv pip install --no-build-isolation --editable .
 
 # --8<-- [start:build-wheel-from-source-in-docker]
 
-#### Optional CUDA assembler
+#### Build the CUDA image
 
-For SM107, build the `cuda-compiler` target to use NVIDIA ptxas 13.4.92
-with the existing PyTorch and Triton stack:
+Use the same build command for all supported NVIDIA GPU architectures:
 
 ```bash
-docker buildx build --load -f docker/Dockerfile.cuda \
-  --target cuda-compiler -t vllm-omni:cuda-compiler .
+DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.cuda -t vllm-omni-cuda .
 ```
 
-The default `final` target keeps the standard CUDA image. This optional
-target updates the assembler; it does not change the PyTorch CUDA build.
+The image includes NVIDIA ptxas 13.4.92 for Blackwell and Rubin. Triton
+selects the assembler for the detected GPU architecture; no additional
+build target is needed.
 
 # --8<-- [end:build-wheel-from-source-in-docker]
 
