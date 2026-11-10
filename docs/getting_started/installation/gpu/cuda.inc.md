@@ -163,6 +163,46 @@ uv pip install --no-build-isolation --editable .
 
 # --8<-- [start:build-wheel-from-source-in-docker]
 
+#### Rubin compiler overlay
+
+The experimental `docker/Dockerfile.rubin` layer reuses the ordinary CUDA
+source image built by `docker/Dockerfile.cuda`. It preserves that image's
+vLLM 0.33.0, PyTorch 2.14, Triton 3.8, and pinned cuDNN runtime, and selects
+ptxas 13.4.92 from a hash-pinned NVIDIA compiler wheel for SM107. The wheel
+and its license are installed outside Python's import path; only the
+standalone assembler is selected.
+It does not install the old Triton 3.7 backport or replace PyTorch.
+The PyTorch CUDA build remains `cu130`; this is a compiler overlay, not a
+PyTorch `cu134` build or a claim of general Rubin model qualification.
+
+Build both images from the same checkout:
+
+```bash
+docker build -f docker/Dockerfile.cuda -t vllm-omni:cuda-source .
+docker build -f docker/Dockerfile.rubin \
+  --build-arg OMNI_IMAGE=vllm-omni:cuda-source \
+  -t vllm-omni:rubin .
+```
+
+On a real Rubin GPU, check the existing runtime pins and the encoder,
+diffusion attention, and Triton compilation paths before serving a model:
+
+```bash
+docker run --rm --gpus all vllm-omni:rubin \
+  python3 /app/vllm-omni/.buildkite/cuda/scripts/check_vllm_runtime.py
+docker run --rm --gpus all --ipc=host -w /app/vllm-omni \
+  -e TRITON_CACHE_DIR=/tmp/rubin-validation-cache vllm-omni:rubin \
+  sh -c 'uv pip install --system pytest-asyncio==1.4.0 pytest-xdist==3.8.0 &&
+    python3 -m pytest -q tests/diffusion/attention/test_rubin_runtime.py \
+    -m "core_model and diffusion and cuda and Rubin" --run-level=core_model'
+```
+
+The runtime gate checks actual cuDNN loading and native extension imports;
+`uv pip check` alone cannot establish either. The GPU tests require SM107
+and do not download model weights. The pytest plugins are installed only in
+the disposable test container. Full model and API validation remains a
+separate step; use the model's recipe with this built image.
+
 # --8<-- [end:build-wheel-from-source-in-docker]
 
 # --8<-- [start:pre-built-images]
