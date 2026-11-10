@@ -139,8 +139,7 @@ Rubin prefers `CUDNN_ATTN` for supported head sizes when cuDNN 9.25.0 or newer
 is available. Older runtimes are excluded from automatic cuDNN selection;
 the existing FlashInfer, FlashAttention, and SDPA candidate order applies.
 Explicit `CUDNN_ATTN` with an older runtime raises an actionable error.
-Use a matching CUDA 13.4 or newer software stack, including compatible
-PyTorch, Triton, and ptxas builds.
+Kernel compilation requires an SM107-capable `ptxas`.
 
 `TRTLLM_ATTN` is not selected automatically on Rubin: an importable FlashInfer
 API does not establish that its kernel package includes the requested SM107

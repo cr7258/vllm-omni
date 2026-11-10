@@ -163,18 +163,6 @@ uv pip install --no-build-isolation --editable .
 
 # --8<-- [start:build-wheel-from-source-in-docker]
 
-#### Build the CUDA image
-
-Use the same build command for all supported NVIDIA GPU architectures:
-
-```bash
-DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile.cuda -t vllm-omni-cuda .
-```
-
-The image includes NVIDIA ptxas 13.4.92 for Blackwell and Rubin. Triton
-selects the assembler for the detected GPU architecture; no additional
-build target is needed.
-
 # --8<-- [end:build-wheel-from-source-in-docker]
 
 # --8<-- [start:pre-built-images]

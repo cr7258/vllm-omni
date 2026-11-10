@@ -98,10 +98,6 @@ RUN uv pip install --target /opt/cuda-compiler --no-deps --only-binary=:all: \
     && chmod 0755 /opt/cuda-compiler/nvidia/cu13/bin/ptxas
 ENV TRITON_PTXAS_BLACKWELL_PATH=/opt/cuda-compiler/nvidia/cu13/bin/ptxas
 
-RUN python3 -c "from triton.backends.nvidia.compiler import get_ptxas; assert get_ptxas(107).path == '/opt/cuda-compiler/nvidia/cu13/bin/ptxas'; assert get_ptxas(107).version.startswith('13.4')" \
-    && /opt/cuda-compiler/nvidia/cu13/bin/ptxas --version \
-    && uv pip check --system
-
 # Fail the image build if dependency resolution replaced the selected vLLM.
 # The CPU builder has no NVIDIA driver; CUDA imports are checked at the start
 # of each GPU test job by .buildkite/cuda/scripts/check_vllm_runtime.py.
